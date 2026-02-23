@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings('ignore')
+
 import ezdxf
 import geopandas as gpd
 from shapely import Point, LineString
@@ -68,7 +71,6 @@ class DXFtoSHP:
         radius = arc.dxf.radius
         start_angle = arc.dxf.start_angle
         end_angle = arc.dxf.end_angle
-        print(center, radius, start_angle, end_angle)
 
         # Normalize sweep
         if end_angle < start_angle:
