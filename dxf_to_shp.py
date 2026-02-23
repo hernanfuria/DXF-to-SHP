@@ -121,7 +121,7 @@ class DXFtoSHP:
                 layers.append(layer)
         # print(layers)
 
-        # classify points by layer and save
+        # classify lines by layer and save
         for layer in layers:
             layer_dict = {
                 'type': [], 
@@ -213,6 +213,54 @@ class DXFtoSHP:
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf.to_file(os.path.join(texts_folder, f"{layer}.shp"))
 
+    def __circle_to_polygon(self, circle, segments=360):
+        center = circle.dxf.center
+        radius = circle.dxf.radius
+
+        vertices = []
+
+        for i in range(segments):
+            angle = 2 * math.pi * i / segments
+            x = center.x + radius * math.cos(angle)
+            y = center.y + radius * math.sin(angle)
+            vertices.append((x, y))
+
+        # Close the ring
+        vertices.append(vertices[0])
+
+        return vertices
+
+    def _export_circles(self):
+        circles_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'circles')
+        os.mkdir(circles_folder)
+
+        # query all CIRCLE entities
+        circles = self.msp.query("CIRCLE")
+
+        # check present layers
+        layers = []
+        for circle in circles:
+            layer = circle.dxf.layer
+            if layer not in layers:
+                layers.append(layer)
+        # print(layers)
+
+        # classify circles by layer and save
+        for layer in layers:
+            layer_dict = {
+                'type': [], 
+                'geometry': []
+            }
+
+            for circle in circles:
+                if circle.dxf.layer == layer:
+                    vertices = self.__circle_to_polygon(circle)
+                    layer_dict['type'].append('CIRCLE')
+                    layer_dict['geometry'].append(LineString(vertices))
+
+            gdf = gpd.GeoDataFrame(layer_dict)
+            gdf.to_file(os.path.join(circles_folder, f"{layer}.shp"))
+
     def _export_mleaders(self):
         pass
 
@@ -229,6 +277,7 @@ class DXFtoSHP:
             self._export_points,
             self._export_lines,
             self._export_texts,
+            self._export_circles,
             # self._export_mleaders,
             # self._export_blocks,
             # self._export_report,
