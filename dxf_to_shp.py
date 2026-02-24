@@ -10,7 +10,7 @@ from datetime import datetime
 import math
 import string
 
-from clic import red
+from clic import red, green
 
 
 class DXFtoSHP:
@@ -27,8 +27,10 @@ class DXFtoSHP:
         self.dxf_file_name = dxf_file_name
 
     def _read_dxf(self):
+        print(f"Reading {os.path.join(self.input_folder_path, self.dxf_file_name)}")
         self.dxf = ezdxf.readfile(os.path.join(self.input_folder_path, self.dxf_file_name))
         self.msp = self.dxf.modelspace()
+        print(green('\tDrawing read'))
 
     def __double_digit_number(self, number) -> str:
         num_str = str(number)
@@ -38,6 +40,7 @@ class DXFtoSHP:
         return num_str
 
     def _create_out_folder(self):
+        print('Creating output folder')
         now = datetime.now()
         year = self.__double_digit_number(now.year)
         month = self.__double_digit_number(now.month)
@@ -47,8 +50,10 @@ class DXFtoSHP:
         second = self.__double_digit_number(now.second)
         self.out_folder_name = f"{self.dxf_file_name[:-4]}_{year}{month}{day}_{hour}{minute}{second}"
         os.mkdir(os.path.join(self.output_folder_path, self.out_folder_name))
+        print(green(f"\t{os.path.join(self.output_folder_path, self.out_folder_name)} created"))
 
     def _export_points(self):
+        print('Exporting points')
         points_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'points')
         os.mkdir(points_folder)
 
@@ -70,15 +75,20 @@ class DXFtoSHP:
                 'geometry': []
             }
 
+            count = 0
             for point in points:
                 if point.dxf.layer == layer:
                     x, y, z = point.dxf.location
                     # print(f"found point in {layer} at {x} {y}")
                     layer_dict['type'].append('POINT')
                     layer_dict['geometry'].append(Point(x, y))
+                    count += 1
+            print(f"\tExporting {count} points in layer {layer}")
 
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf.to_file(os.path.join(points_folder, f"{layer}.shp"))
+        
+        print(green('\tExported'))
 
     def __arc_to_linestring(self, arc):
         center = arc.dxf.center
@@ -107,6 +117,8 @@ class DXFtoSHP:
         return vertices
 
     def _export_lines(self):
+        print('Exporting lines')
+
         # lines, polylines, arcs
         lines_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'lines')
         os.mkdir(lines_folder)
@@ -144,6 +156,7 @@ class DXFtoSHP:
                 'geometry': []
             }
 
+            count = 0
             for line in lines:
                 if line.dxf.layer == layer:
                     start = line.dxf.start
@@ -151,6 +164,7 @@ class DXFtoSHP:
                     # print(f"found line in {layer} at {start.x} {start.y}")
                     layer_dict['type'].append('LINE')
                     layer_dict['geometry'].append(LineString([[start.x, start.y], [end.x, end.y]]))
+                    count += 1
 
             for lwpline in lwpolylines:
                 if lwpline.dxf.layer == layer:
@@ -160,6 +174,7 @@ class DXFtoSHP:
                     # print(f"found lwpolyline in {layer} at {vertices}")
                     layer_dict['type'].append('LWPOLYLINE')
                     layer_dict['geometry'].append(LineString(vertices))
+                    count += 1
 
             for pline in polylines:
                 if pline.dxf.layer == layer:
@@ -170,6 +185,7 @@ class DXFtoSHP:
                     # print(f"found polyline in {layer}")
                     layer_dict['type'].append('POLYLINE')
                     layer_dict['geometry'].append(LineString(vertices))
+                    count += 1
 
             for arc in arcs:
                 if arc.dxf.layer == layer:
@@ -177,11 +193,17 @@ class DXFtoSHP:
                     # print(f"found arc in {layer} at {vertices}")
                     layer_dict['type'].append('ARC')
                     layer_dict['geometry'].append(LineString(vertices))
+                    count += 1
+            
+            print(f"\tExporting {count} lines in layer {layer}")
 
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf.to_file(os.path.join(lines_folder, f"{layer}.shp"))
 
+        print(green('\tExported'))
+
     def _export_texts(self):
+        print('Exporting texts')
         # texts, mtexts
         texts_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'texts')
         os.mkdir(texts_folder)
@@ -210,6 +232,7 @@ class DXFtoSHP:
                 'geometry': []
             }
 
+            count = 0
             for text in texts:
                 if text.dxf.layer == layer:
                     insert = text.dxf.insert
@@ -217,6 +240,7 @@ class DXFtoSHP:
                     layer_dict['type'].append('TEXT')
                     layer_dict['content'].append(content)
                     layer_dict['geometry'].append(Point(insert.x, insert.y))
+                    count += 1
 
             for mtext in mtexts:
                 if mtext.dxf.layer == layer:
@@ -225,9 +249,14 @@ class DXFtoSHP:
                     layer_dict['type'].append('MTEXT')
                     layer_dict['content'].append(content)
                     layer_dict['geometry'].append(Point(insert.x, insert.y))
+                    count += 1
+
+            print(f"\tExporting {count} texts in layer {layer}")
 
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf.to_file(os.path.join(texts_folder, f"{layer}.shp"))
+
+        print(green('\tExported'))
 
     def __circle_to_polygon(self, circle, segments=360):
         center = circle.dxf.center
@@ -247,6 +276,7 @@ class DXFtoSHP:
         return vertices
 
     def _export_circles(self):
+        print('Exporting circles')
         circles_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'circles')
         os.mkdir(circles_folder)
 
@@ -268,14 +298,20 @@ class DXFtoSHP:
                 'geometry': []
             }
 
+            count = 0
             for circle in circles:
                 if circle.dxf.layer == layer:
                     vertices = self.__circle_to_polygon(circle)
                     layer_dict['type'].append('CIRCLE')
                     layer_dict['geometry'].append(LineString(vertices))
+                    count += 1
+
+            print(f"\tExporting {count} circles in layer {layer}")
 
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf.to_file(os.path.join(circles_folder, f"{layer}.shp"))
+
+        print(green('\tExported'))
 
     def _export_mleaders(self):
         pass
@@ -304,6 +340,7 @@ class DXFtoSHP:
         return block_attr
 
     def _export_blocks(self):
+        print('Exporting blocks')
         blocks_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'blocks')
         os.mkdir(blocks_folder)
 
@@ -335,6 +372,7 @@ class DXFtoSHP:
                             if valid_column not in list(layer_dict.keys()):
                                 layer_dict[valid_column] = []
             
+            count = 0
             for block in blocks:
                 if block.dxf.layer == layer:
                     block_name = block.dxf.name
@@ -355,8 +393,14 @@ class DXFtoSHP:
                             valid_column = self.__get_valid_shp_column_name(block_attr)
                             layer_dict[valid_column][-1] = text_value
 
+                    count += 1
+
+            print(f"\tExporting {count} blocks in layer {layer}")
+
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf.to_file(os.path.join(blocks_folder, f"{layer}.shp"))
+
+        print(green('\tExported'))
 
     def _export_report(self):
         pass

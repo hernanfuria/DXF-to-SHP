@@ -15,7 +15,7 @@ def main():
     all_input_files = os.listdir(input_folder_path)
     for input_file in all_input_files:
         if input_file[-4:] == '.dxf':
-            print(input_file)
+            # print(input_file)
             exporter = DXFtoSHP(
                 input_folder_path=input_folder_path,
                 output_folder_path=output_folder_path,
