@@ -8,6 +8,7 @@ from shapely import Point, LineString
 import os
 from datetime import datetime
 import math
+import string
 
 from clic import red
 
@@ -29,9 +30,22 @@ class DXFtoSHP:
         self.dxf = ezdxf.readfile(os.path.join(self.input_folder_path, self.dxf_file_name))
         self.msp = self.dxf.modelspace()
 
+    def __double_digit_number(self, number) -> str:
+        num_str = str(number)
+        if len(num_str) == 1:
+            return '0' + num_str
+        
+        return num_str
+
     def _create_out_folder(self):
         now = datetime.now()
-        self.out_folder_name = f"{self.dxf_file_name[:-4]}_{now.year}{now.month}{now.day}_{now.hour}{now.minute}{now.second}"
+        year = self.__double_digit_number(now.year)
+        month = self.__double_digit_number(now.month)
+        day = self.__double_digit_number(now.day)
+        hour = self.__double_digit_number(now.hour)
+        minute = self.__double_digit_number(now.minute)
+        second = self.__double_digit_number(now.second)
+        self.out_folder_name = f"{self.dxf_file_name[:-4]}_{year}{month}{day}_{hour}{minute}{second}"
         os.mkdir(os.path.join(self.output_folder_path, self.out_folder_name))
 
     def _export_points(self):
@@ -266,8 +280,83 @@ class DXFtoSHP:
     def _export_mleaders(self):
         pass
 
+    def __get_valid_shp_column_name(self, block_attr: str) -> str:
+        # Allowed Characters: Must only contain alphanumeric characters (a-z, A-Z, 0-9) and the underscore (_)
+        allowed_characters = list(string.ascii_letters + string.digits + '_')
+        to_replace = []
+        for character in block_attr:
+            if character not in allowed_characters:
+                to_replace.append(character)
+        for character in to_replace:
+            block_attr = block_attr.replace(character, '_')
+
+        # Starting Character: Must begin with a letter, not a number or an underscore.
+        if block_attr[0] not in list(string.ascii_letters):
+            block_attr = 'a' + block_attr
+        
+        # Length: Maximum of 10 characters
+        if len(block_attr) > 10:
+            block_attr = block_attr[0:10]
+        
+        # Reserved Words: Avoid using reserved keywords that may conflict with SQL or the specific GIS software being used
+        # Uniqueness: Field names must be unique within the shapefile.
+
+        return block_attr
+
     def _export_blocks(self):
-        pass
+        blocks_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'blocks')
+        os.mkdir(blocks_folder)
+
+        # query all INSERT entities
+        blocks = self.msp.query("INSERT")
+
+        # check present layers
+        layers = []
+        for block in blocks:
+            layer = block.dxf.layer
+            if layer not in layers:
+                layers.append(layer)
+        # print(layers)
+
+        # classify blocks by layer and save
+        for layer in layers:
+            layer_dict = {
+                'type': [], 
+                'block_name': [],
+                'geometry': []
+            }
+            # collect attributes names
+            for block in blocks:
+                if block.dxf.layer == layer:
+                    if block.attribs:
+                        for attrib in block.attribs:
+                            block_attr = attrib.dxf.tag  # block attrib name
+                            valid_column = self.__get_valid_shp_column_name(block_attr)
+                            if valid_column not in list(layer_dict.keys()):
+                                layer_dict[valid_column] = []
+            
+            for block in blocks:
+                if block.dxf.layer == layer:
+                    block_name = block.dxf.name
+                    x, y, z = block.dxf.insert
+
+                    layer_dict['type'].append('INSERT')
+                    layer_dict['block_name'].append(block_name)
+                    layer_dict['geometry'].append(Point(x, y))
+                    for col in list(layer_dict.keys()):  # insert None values first to avoid falling behind
+                        if col not in ['type', 'block_name', 'geometry']:
+                            layer_dict[col].append(None)
+
+                    if block.attribs:
+                        for attrib in block.attribs:
+                            block_attr = attrib.dxf.tag  # block attrib name
+                            text_value = attrib.dxf.text  # block text content
+
+                            valid_column = self.__get_valid_shp_column_name(block_attr)
+                            layer_dict[valid_column][-1] = text_value
+
+            gdf = gpd.GeoDataFrame(layer_dict)
+            gdf.to_file(os.path.join(blocks_folder, f"{layer}.shp"))
 
     def _export_report(self):
         pass
@@ -281,7 +370,7 @@ class DXFtoSHP:
             self._export_texts,
             self._export_circles,
             # self._export_mleaders,
-            # self._export_blocks,
+            self._export_blocks,
             # self._export_report,
         ]
 
