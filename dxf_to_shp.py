@@ -171,6 +171,9 @@ class DXFtoSHP:
                     vertices = []
                     for x, y, *_ in lwpline.get_points():  # returns (x, y, [start_width, end_width, bulge])
                         vertices.append([float(x), float(y)])
+                    if lwpline.closed and vertices[0] != vertices[-1]:
+                        vertices.append(vertices[0])
+
                     # print(f"found lwpolyline in {layer} at {vertices}")
                     layer_dict['type'].append('LWPOLYLINE')
                     layer_dict['geometry'].append(LineString(vertices))
@@ -182,6 +185,8 @@ class DXFtoSHP:
                     for vertex in pline.vertices:
                         x, y, z = vertex.dxf.location
                         vertices.append([float(x), float(y)])
+                    if pline.is_closed and vertices[0] != vertices[-1]:
+                        vertices.append(vertices[0])
                     # print(f"found polyline in {layer}")
                     layer_dict['type'].append('POLYLINE')
                     layer_dict['geometry'].append(LineString(vertices))
