@@ -26,6 +26,10 @@ class DXFtoSHP:
         self.output_folder_path = output_folder_path
         self.dxf_file_name = dxf_file_name
 
+        self.reproject = False
+        self.input_crs = 0
+        self.output_crs = 0
+
     def _read_dxf(self):
         print(f"Reading {os.path.join(self.input_folder_path, self.dxf_file_name)}")
         self.dxf = ezdxf.readfile(os.path.join(self.input_folder_path, self.dxf_file_name))
@@ -51,6 +55,29 @@ class DXFtoSHP:
         self.out_folder_name = f"{self.dxf_file_name[:-4]}_{year}{month}{day}_{hour}{minute}{second}"
         os.mkdir(os.path.join(self.output_folder_path, self.out_folder_name))
         print(green(f"\t{os.path.join(self.output_folder_path, self.out_folder_name)} created"))
+
+    def _get_reproject_info(self):
+        self.reproject = False
+        self.input_crs = 0
+        self.output_crs = 0
+
+        rep = input('Do you want to export in a specific CRS? (y/n): ')
+        if rep in ['y', 'Y', 'yes', 'Yes', 'YES']:
+            self.reproject = True
+            input_crs = input("What's the autocad drawing CRS? (please enter just the number, for example: 4326): ")
+            self.input_crs = int(input_crs)
+            output_crs = input("What CRS do you want the shapefiles to be?: ")
+            self.output_crs = int(output_crs)
+
+    def __create_and_export_shp(self, layer_dict: dict, output_path: str):
+        if self.reproject:
+            gdf = gpd.GeoDataFrame(layer_dict)
+            gdf = gdf.set_crs(epsg=self.input_crs)
+            gdf = gdf.to_crs(epsg=self.output_crs)
+            gdf.to_file(output_path)
+        else:
+            gdf = gpd.GeoDataFrame(layer_dict)
+            gdf.to_file(output_path)
 
     def _export_points(self):
         print('Exporting points')
@@ -85,8 +112,9 @@ class DXFtoSHP:
                     count += 1
             print(f"\tExporting {count} points in layer {layer}")
 
-            gdf = gpd.GeoDataFrame(layer_dict)
-            gdf.to_file(os.path.join(points_folder, f"{layer}.shp"))
+            # gdf = gpd.GeoDataFrame(layer_dict)
+            # gdf.to_file(os.path.join(points_folder, f"{layer}.shp"))
+            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(points_folder, f"{layer}.shp"))
         
         print(green('\tExported'))
 
@@ -202,8 +230,9 @@ class DXFtoSHP:
             
             print(f"\tExporting {count} lines in layer {layer}")
 
-            gdf = gpd.GeoDataFrame(layer_dict)
-            gdf.to_file(os.path.join(lines_folder, f"{layer}.shp"))
+            # gdf = gpd.GeoDataFrame(layer_dict)
+            # gdf.to_file(os.path.join(lines_folder, f"{layer}.shp"))
+            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(lines_folder, f"{layer}.shp"))
 
         print(green('\tExported'))
 
@@ -258,8 +287,9 @@ class DXFtoSHP:
 
             print(f"\tExporting {count} texts in layer {layer}")
 
-            gdf = gpd.GeoDataFrame(layer_dict)
-            gdf.to_file(os.path.join(texts_folder, f"{layer}.shp"))
+            # gdf = gpd.GeoDataFrame(layer_dict)
+            # gdf.to_file(os.path.join(texts_folder, f"{layer}.shp"))
+            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(texts_folder, f"{layer}.shp"))
 
         print(green('\tExported'))
 
@@ -313,8 +343,9 @@ class DXFtoSHP:
 
             print(f"\tExporting {count} circles in layer {layer}")
 
-            gdf = gpd.GeoDataFrame(layer_dict)
-            gdf.to_file(os.path.join(circles_folder, f"{layer}.shp"))
+            # gdf = gpd.GeoDataFrame(layer_dict)
+            # gdf.to_file(os.path.join(circles_folder, f"{layer}.shp"))
+            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(circles_folder, f"{layer}.shp"))
 
         print(green('\tExported'))
 
@@ -402,8 +433,9 @@ class DXFtoSHP:
 
             print(f"\tExporting {count} blocks in layer {layer}")
 
-            gdf = gpd.GeoDataFrame(layer_dict)
-            gdf.to_file(os.path.join(blocks_folder, f"{layer}.shp"))
+            # gdf = gpd.GeoDataFrame(layer_dict)
+            # gdf.to_file(os.path.join(blocks_folder, f"{layer}.shp"))
+            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(blocks_folder, f"{layer}.shp"))
 
         print(green('\tExported'))
 
@@ -414,6 +446,7 @@ class DXFtoSHP:
         functions = [
             self._read_dxf,
             self._create_out_folder,
+            self._get_reproject_info,
             self._export_points,
             self._export_lines,
             self._export_texts,
