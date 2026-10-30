@@ -604,15 +604,20 @@ class DXFtoSHP:
         print(green('\tExported blocks completed'))
 
     def _export_report(self):
-        """Generate a summary report text file (report.txt) detailing export results, success counts, and error coordinates."""
+        """Generate a summary report text file (report.txt) detailing export results, CRS info, success counts, and error coordinates."""
         print('Exporting report')
         report_path = os.path.join(self.output_folder_path, self.out_folder_name, 'report.txt')
         
+        input_crs_str = f"EPSG:{self.input_crs}" if self.reproject else "N/A (DXF Native)"
+        output_crs_str = f"EPSG:{self.output_crs}" if self.reproject else "N/A (DXF Native)"
+
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write("=" * 70 + "\n")
             f.write(f" DXF to Shapefile Export Report\n")
             f.write(f" Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f" DXF File: {self.dxf_file_name}\n")
+            f.write(f" Input CRS: {input_crs_str}\n")
+            f.write(f" Output CRS: {output_crs_str}\n")
             f.write("=" * 70 + "\n\n")
             
             if self.export_logs:
