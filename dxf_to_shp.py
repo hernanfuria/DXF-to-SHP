@@ -64,7 +64,7 @@ class DXFtoSHP:
         rep = input('Do you want to export in a specific CRS? (y/n): ')
         if rep in ['y', 'Y', 'yes', 'Yes', 'YES']:
             self.reproject = True
-            input_crs = input("What's the autocad drawing CRS? (please enter just the number, for example: 4326): ")
+            input_crs = input("What's the autocad drawing CRS? (please enter just the number, for example: 22195): ")
             self.input_crs = int(input_crs)
             output_crs = input("What CRS do you want the shapefiles to be?: ")
             self.output_crs = int(output_crs)
@@ -84,39 +84,47 @@ class DXFtoSHP:
         points_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'points')
         os.mkdir(points_folder)
 
-        # query all POINT entities
+        # Query all POINT entities
         points = self.msp.query("POINT")
 
-        # check present layers
+        # Check present layers
         layers = []
         for point in points:
             layer = point.dxf.layer
             if layer not in layers:
                 layers.append(layer)
-        # print(layers)
 
-        # classify points by layer and save
+        # Classify points by layer and save with robust element-level error handling
         for layer in layers:
+            print(f"\tExporting layer '{layer}'...")
             layer_dict = {
                 'type': [], 
                 'geometry': []
             }
 
             count = 0
+            error_count = 0
             for point in points:
                 if point.dxf.layer == layer:
-                    x, y, z = point.dxf.location
-                    # print(f"found point in {layer} at {x} {y}")
-                    layer_dict['type'].append('POINT')
-                    layer_dict['geometry'].append(Point(x, y))
-                    count += 1
-            print(f"\tExporting {count} points in layer {layer}")
+                    try:
+                        x, y, z = point.dxf.location
+                        layer_dict['type'].append('POINT')
+                        layer_dict['geometry'].append(Point(x, y))
+                        count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process point element in layer '{layer}': {e}"))
 
-            # gdf = gpd.GeoDataFrame(layer_dict)
-            # gdf.to_file(os.path.join(points_folder, f"{layer}.shp"))
-            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(points_folder, f"{layer}.shp"))
+            if count > 0:
+                try:
+                    self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(points_folder, f"{layer}.shp"))
+                    print(green(f"\t\tSuccessfully exported {count} points in layer '{layer}' (Errors: {error_count})"))
+                except Exception as e:
+                    print(red(f"\t\t[Error] Failed to save shapefile for points in layer '{layer}': {e}"))
+            else:
+                print(f"\t\tNo valid points found to export in layer '{layer}' (Errors: {error_count})")
         
-        print(green('\tExported'))
+        print(green('\tExported points completed'))
 
     def __arc_to_linestring(self, arc):
         center = arc.dxf.center
@@ -147,17 +155,17 @@ class DXFtoSHP:
     def _export_lines(self):
         print('Exporting lines')
 
-        # lines, polylines, arcs
+        # Lines, polylines, arcs
         lines_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'lines')
         os.mkdir(lines_folder)
 
-        # query all LINE, POLYLINES, ARC entities
+        # Query all LINE, LWPOLYLINE, POLYLINE, ARC entities
         lines = self.msp.query("LINE")
         lwpolylines = self.msp.query("LWPOLYLINE")
         polylines = self.msp.query("POLYLINE")
         arcs = self.msp.query("ARC")
 
-        # check present layers
+        # Check present layers
         layers = []
         for line in lines:
             layer = line.dxf.layer
@@ -175,78 +183,96 @@ class DXFtoSHP:
             layer = arc.dxf.layer
             if layer not in layers:
                 layers.append(layer)
-        # print(layers)
 
-        # classify lines by layer and save
+        # Classify lines by layer and save with robust element-level error handling
         for layer in layers:
+            print(f"\tExporting layer '{layer}'...")
             layer_dict = {
                 'type': [], 
                 'geometry': []
             }
 
             count = 0
+            error_count = 0
+
             for line in lines:
                 if line.dxf.layer == layer:
-                    start = line.dxf.start
-                    end = line.dxf.end
-                    # print(f"found line in {layer} at {start.x} {start.y}")
-                    layer_dict['type'].append('LINE')
-                    layer_dict['geometry'].append(LineString([[start.x, start.y], [end.x, end.y]]))
-                    count += 1
+                    try:
+                        start = line.dxf.start
+                        end = line.dxf.end
+                        layer_dict['type'].append('LINE')
+                        layer_dict['geometry'].append(LineString([[start.x, start.y], [end.x, end.y]]))
+                        count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process LINE in layer '{layer}': {e}"))
 
             for lwpline in lwpolylines:
                 if lwpline.dxf.layer == layer:
-                    vertices = []
-                    for x, y, *_ in lwpline.get_points():  # returns (x, y, [start_width, end_width, bulge])
-                        vertices.append([float(x), float(y)])
-                    if lwpline.closed and vertices[0] != vertices[-1]:
-                        vertices.append(vertices[0])
-
-                    # print(f"found lwpolyline in {layer} at {vertices}")
-                    layer_dict['type'].append('LWPOLYLINE')
-                    layer_dict['geometry'].append(LineString(vertices))
-                    count += 1
+                    try:
+                        vertices = []
+                        for x, y, *_ in lwpline.get_points():
+                            vertices.append([float(x), float(y)])
+                        if lwpline.closed and vertices and vertices[0] != vertices[-1]:
+                            vertices.append(vertices[0])
+                        if vertices:
+                            layer_dict['type'].append('LWPOLYLINE')
+                            layer_dict['geometry'].append(LineString(vertices))
+                            count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process LWPOLYLINE in layer '{layer}': {e}"))
 
             for pline in polylines:
                 if pline.dxf.layer == layer:
-                    vertices = []
-                    for vertex in pline.vertices:
-                        x, y, z = vertex.dxf.location
-                        vertices.append([float(x), float(y)])
-                    if pline.is_closed and vertices[0] != vertices[-1]:
-                        vertices.append(vertices[0])
-                    # print(f"found polyline in {layer}")
-                    layer_dict['type'].append('POLYLINE')
-                    layer_dict['geometry'].append(LineString(vertices))
-                    count += 1
+                    try:
+                        vertices = []
+                        for vertex in pline.vertices:
+                            x, y, z = vertex.dxf.location
+                            vertices.append([float(x), float(y)])
+                        if pline.is_closed and vertices and vertices[0] != vertices[-1]:
+                            vertices.append(vertices[0])
+                        if vertices:
+                            layer_dict['type'].append('POLYLINE')
+                            layer_dict['geometry'].append(LineString(vertices))
+                            count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process POLYLINE in layer '{layer}': {e}"))
 
             for arc in arcs:
                 if arc.dxf.layer == layer:
-                    vertices = self.__arc_to_linestring(arc)
-                    # print(f"found arc in {layer} at {vertices}")
-                    layer_dict['type'].append('ARC')
-                    layer_dict['geometry'].append(LineString(vertices))
-                    count += 1
+                    try:
+                        vertices = self.__arc_to_linestring(arc)
+                        if vertices:
+                            layer_dict['type'].append('ARC')
+                            layer_dict['geometry'].append(LineString(vertices))
+                            count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process ARC in layer '{layer}': {e}"))
             
-            print(f"\tExporting {count} lines in layer {layer}")
+            if count > 0:
+                try:
+                    self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(lines_folder, f"{layer}.shp"))
+                    print(green(f"\t\tSuccessfully exported {count} lines/curves in layer '{layer}' (Errors: {error_count})"))
+                except Exception as e:
+                    print(red(f"\t\t[Error] Failed to save shapefile for lines in layer '{layer}': {e}"))
+            else:
+                print(f"\t\tNo valid lines found to export in layer '{layer}' (Errors: {error_count})")
 
-            # gdf = gpd.GeoDataFrame(layer_dict)
-            # gdf.to_file(os.path.join(lines_folder, f"{layer}.shp"))
-            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(lines_folder, f"{layer}.shp"))
-
-        print(green('\tExported'))
+        print(green('\tExported lines completed'))
 
     def _export_texts(self):
         print('Exporting texts')
-        # texts, mtexts
         texts_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'texts')
         os.mkdir(texts_folder)
 
-        # query all TEXT, MTEXT entities
+        # Query all TEXT, MTEXT entities
         texts = self.msp.query("TEXT")
         mtexts = self.msp.query("MTEXT")
 
-        # check present layers
+        # Check present layers
         layers = []
         for text in texts:
             layer = text.dxf.layer
@@ -256,10 +282,10 @@ class DXFtoSHP:
             layer = mtext.dxf.layer
             if layer not in layers:
                 layers.append(layer)
-        # print(layers)
 
-        # classify points by layer and save
+        # Classify texts by layer and save with robust element-level error handling
         for layer in layers:
+            print(f"\tExporting layer '{layer}'...")
             layer_dict = {
                 'type': [], 
                 'content': [],
@@ -267,31 +293,44 @@ class DXFtoSHP:
             }
 
             count = 0
+            error_count = 0
+
             for text in texts:
                 if text.dxf.layer == layer:
-                    insert = text.dxf.insert
-                    content = text.dxf.text
-                    layer_dict['type'].append('TEXT')
-                    layer_dict['content'].append(content)
-                    layer_dict['geometry'].append(Point(insert.x, insert.y))
-                    count += 1
+                    try:
+                        insert = text.dxf.insert
+                        content = text.dxf.text
+                        layer_dict['type'].append('TEXT')
+                        layer_dict['content'].append(content)
+                        layer_dict['geometry'].append(Point(insert.x, insert.y))
+                        count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process TEXT in layer '{layer}': {e}"))
 
             for mtext in mtexts:
                 if mtext.dxf.layer == layer:
-                    insert = mtext.dxf.insert
-                    content = mtext.plain_text()
-                    layer_dict['type'].append('MTEXT')
-                    layer_dict['content'].append(content)
-                    layer_dict['geometry'].append(Point(insert.x, insert.y))
-                    count += 1
+                    try:
+                        insert = mtext.dxf.insert
+                        content = mtext.plain_text()
+                        layer_dict['type'].append('MTEXT')
+                        layer_dict['content'].append(content)
+                        layer_dict['geometry'].append(Point(insert.x, insert.y))
+                        count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process MTEXT in layer '{layer}': {e}"))
 
-            print(f"\tExporting {count} texts in layer {layer}")
+            if count > 0:
+                try:
+                    self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(texts_folder, f"{layer}.shp"))
+                    print(green(f"\t\tSuccessfully exported {count} texts in layer '{layer}' (Errors: {error_count})"))
+                except Exception as e:
+                    print(red(f"\t\t[Error] Failed to save shapefile for texts in layer '{layer}': {e}"))
+            else:
+                print(f"\t\tNo valid texts found to export in layer '{layer}' (Errors: {error_count})")
 
-            # gdf = gpd.GeoDataFrame(layer_dict)
-            # gdf.to_file(os.path.join(texts_folder, f"{layer}.shp"))
-            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(texts_folder, f"{layer}.shp"))
-
-        print(green('\tExported'))
+        print(green('\tExported texts completed'))
 
     def __circle_to_polygon(self, circle, segments=360):
         center = circle.dxf.center
@@ -315,39 +354,47 @@ class DXFtoSHP:
         circles_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'circles')
         os.mkdir(circles_folder)
 
-        # query all CIRCLE entities
+        # Query all CIRCLE entities
         circles = self.msp.query("CIRCLE")
 
-        # check present layers
+        # Check present layers
         layers = []
         for circle in circles:
             layer = circle.dxf.layer
             if layer not in layers:
                 layers.append(layer)
-        # print(layers)
 
-        # classify circles by layer and save
+        # Classify circles by layer and save with robust element-level error handling
         for layer in layers:
+            print(f"\tExporting layer '{layer}'...")
             layer_dict = {
                 'type': [], 
                 'geometry': []
             }
 
             count = 0
+            error_count = 0
             for circle in circles:
                 if circle.dxf.layer == layer:
-                    vertices = self.__circle_to_polygon(circle)
-                    layer_dict['type'].append('CIRCLE')
-                    layer_dict['geometry'].append(LineString(vertices))
-                    count += 1
+                    try:
+                        vertices = self.__circle_to_polygon(circle)
+                        layer_dict['type'].append('CIRCLE')
+                        layer_dict['geometry'].append(LineString(vertices))
+                        count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process CIRCLE in layer '{layer}': {e}"))
 
-            print(f"\tExporting {count} circles in layer {layer}")
+            if count > 0:
+                try:
+                    self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(circles_folder, f"{layer}.shp"))
+                    print(green(f"\t\tSuccessfully exported {count} circles in layer '{layer}' (Errors: {error_count})"))
+                except Exception as e:
+                    print(red(f"\t\t[Error] Failed to save shapefile for circles in layer '{layer}': {e}"))
+            else:
+                print(f"\t\tNo valid circles found to export in layer '{layer}' (Errors: {error_count})")
 
-            # gdf = gpd.GeoDataFrame(layer_dict)
-            # gdf.to_file(os.path.join(circles_folder, f"{layer}.shp"))
-            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(circles_folder, f"{layer}.shp"))
-
-        print(green('\tExported'))
+        print(green('\tExported circles completed'))
 
     def _export_mleaders(self):
         pass
@@ -369,9 +416,6 @@ class DXFtoSHP:
         # Length: Maximum of 10 characters
         if len(block_attr) > 10:
             block_attr = block_attr[0:10]
-        
-        # Reserved Words: Avoid using reserved keywords that may conflict with SQL or the specific GIS software being used
-        # Uniqueness: Field names must be unique within the shapefile.
 
         return block_attr
 
@@ -380,64 +424,80 @@ class DXFtoSHP:
         blocks_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'blocks')
         os.mkdir(blocks_folder)
 
-        # query all INSERT entities
+        # Query all INSERT entities
         blocks = self.msp.query("INSERT")
 
-        # check present layers
+        # Check present layers
         layers = []
         for block in blocks:
             layer = block.dxf.layer
             if layer not in layers:
                 layers.append(layer)
-        # print(layers)
 
-        # classify blocks by layer and save
+        # Classify blocks by layer and save with robust element-level error handling
         for layer in layers:
+            print(f"\tExporting layer '{layer}'...")
             layer_dict = {
                 'type': [], 
                 'block_name': [],
                 'geometry': []
             }
-            # collect attributes names
-            for block in blocks:
-                if block.dxf.layer == layer:
-                    if block.attribs:
-                        for attrib in block.attribs:
-                            block_attr = attrib.dxf.tag  # block attrib name
-                            valid_column = self.__get_valid_shp_column_name(block_attr)
-                            if valid_column not in list(layer_dict.keys()):
-                                layer_dict[valid_column] = []
             
-            count = 0
+            # Collect attribute names safely
             for block in blocks:
                 if block.dxf.layer == layer:
-                    block_name = block.dxf.name
-                    x, y, z = block.dxf.insert
+                    try:
+                        if block.attribs:
+                            for attrib in block.attribs:
+                                block_attr = attrib.dxf.tag  # block attrib name
+                                valid_column = self.__get_valid_shp_column_name(block_attr)
+                                if valid_column not in list(layer_dict.keys()):
+                                    layer_dict[valid_column] = []
+                    except Exception as e:
+                        print(red(f"\t\t[Warning] Failed to inspect attributes for block in layer '{layer}': {e}"))
 
-                    layer_dict['type'].append('INSERT')
-                    layer_dict['block_name'].append(block_name)
-                    layer_dict['geometry'].append(Point(x, y))
-                    for col in list(layer_dict.keys()):  # insert None values first to avoid falling behind
-                        if col not in ['type', 'block_name', 'geometry']:
-                            layer_dict[col].append(None)
+            count = 0
+            error_count = 0
+            for block in blocks:
+                if block.dxf.layer == layer:
+                    try:
+                        block_name = block.dxf.name
+                        x, y, z = block.dxf.insert
 
-                    if block.attribs:
-                        for attrib in block.attribs:
-                            block_attr = attrib.dxf.tag  # block attrib name
-                            text_value = attrib.dxf.text  # block text content
+                        layer_dict['type'].append('INSERT')
+                        layer_dict['block_name'].append(block_name)
+                        layer_dict['geometry'].append(Point(x, y))
+                        for col in list(layer_dict.keys()):  # Insert None values first to avoid falling behind
+                            if col not in ['type', 'block_name', 'geometry']:
+                                layer_dict[col].append(None)
 
-                            valid_column = self.__get_valid_shp_column_name(block_attr)
-                            layer_dict[valid_column][-1] = text_value
+                        if block.attribs:
+                            for attrib in block.attribs:
+                                try:
+                                    block_attr = attrib.dxf.tag  # block attrib name
+                                    text_value = attrib.dxf.text  # block text content
 
-                    count += 1
+                                    valid_column = self.__get_valid_shp_column_name(block_attr)
+                                    if valid_column in layer_dict:
+                                        layer_dict[valid_column][-1] = text_value
+                                except Exception as att_err:
+                                    print(red(f"\t\t[Warning] Failed to process block attribute in layer '{layer}': {att_err}"))
 
-            print(f"\tExporting {count} blocks in layer {layer}")
+                        count += 1
+                    except Exception as e:
+                        error_count += 1
+                        print(red(f"\t\t[Error] Failed to process block instance in layer '{layer}': {e}"))
 
-            # gdf = gpd.GeoDataFrame(layer_dict)
-            # gdf.to_file(os.path.join(blocks_folder, f"{layer}.shp"))
-            self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(blocks_folder, f"{layer}.shp"))
+            if count > 0:
+                try:
+                    self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(blocks_folder, f"{layer}.shp"))
+                    print(green(f"\t\tSuccessfully exported {count} blocks in layer '{layer}' (Errors: {error_count})"))
+                except Exception as e:
+                    print(red(f"\t\t[Error] Failed to save shapefile for blocks in layer '{layer}': {e}"))
+            else:
+                print(f"\t\tNo valid blocks found to export in layer '{layer}' (Errors: {error_count})")
 
-        print(green('\tExported'))
+        print(green('\tExported blocks completed'))
 
     def _export_report(self):
         pass
