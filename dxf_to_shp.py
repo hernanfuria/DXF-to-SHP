@@ -62,7 +62,7 @@ class DXFtoSHP:
         print(green(f"\t{os.path.join(self.output_folder_path, self.out_folder_name)} created"))
 
     def _get_reproject_info(self):
-        """Prompt the user for CRS input and output identifiers if spatial reprojection is desired."""
+        """Prompt the user for CRS input and output identifiers if spatial reprojection is desired (default output CRS: 4326)."""
         self.reproject = False
         self.input_crs = 0
         self.output_crs = 0
@@ -72,8 +72,11 @@ class DXFtoSHP:
             self.reproject = True
             input_crs = input("What's the autocad drawing CRS? (please enter just the number, for example: 22195): ")
             self.input_crs = int(input_crs)
-            output_crs = input("What CRS do you want the shapefiles to be?: ")
-            self.output_crs = int(output_crs)
+            output_crs = input("What CRS do you want the shapefiles to be? [default: 4326]: ")
+            if output_crs.strip() == "":
+                self.output_crs = 4326
+            else:
+                self.output_crs = int(output_crs)
 
     def __create_and_export_shp(self, layer_dict: dict, output_path: str):
         """Create a GeoDataFrame from layer data and export it to a Shapefile, applying CRS reprojection if configured."""
