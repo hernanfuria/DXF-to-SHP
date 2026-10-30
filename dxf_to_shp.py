@@ -22,7 +22,7 @@ class DXFtoSHP:
             output_folder_path: str,
             dxf_file_name: str
     ):
-        """Initialize DXFtoSHP converter with input/output directory paths and DXF filename."""
+        """Initialize DXFtoSHP converter with input/output directory paths, DXF filename, and export logs."""
         self.input_folder_path = input_folder_path
         self.output_folder_path = output_folder_path
         self.dxf_file_name = dxf_file_name
@@ -30,6 +30,7 @@ class DXFtoSHP:
         self.reproject = False
         self.input_crs = 0
         self.output_crs = 0
+        self.export_logs = []
 
     def _read_dxf(self):
         """Read the DXF file using ezdxf and load modelspace entities."""
@@ -86,7 +87,7 @@ class DXFtoSHP:
             gdf.to_file(output_path)
 
     def _export_points(self):
-        """Query and export POINT entities from DXF modelspace grouped by layer with element-level error handling."""
+        """Query and export POINT entities from DXF modelspace grouped by layer with element-level error handling and logging."""
         print('Exporting points')
         points_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'points')
         os.mkdir(points_folder)
@@ -120,16 +121,29 @@ class DXFtoSHP:
                         count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process point element in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"({point.dxf.location[0]}, {point.dxf.location[1]})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (POINT) at coords {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             if count > 0:
                 try:
                     self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(points_folder, f"{layer}.shp"))
-                    print(green(f"\t\tSuccessfully exported {count} points in layer '{layer}' (Errors: {error_count})"))
+                    success_msg = f"[SUCCESS] Layer '{layer}' (POINT): Exported {count} points (Errors: {error_count})"
+                    print(green(f"\t\t{success_msg}"))
+                    self.export_logs.append(success_msg)
                 except Exception as e:
-                    print(red(f"\t\t[Error] Failed to save shapefile for points in layer '{layer}': {e}"))
+                    fail_msg = f"[ERROR] Layer '{layer}' (POINT): Failed to save shapefile: {e}"
+                    print(red(f"\t\t{fail_msg}"))
+                    self.export_logs.append(fail_msg)
             else:
-                print(f"\t\tNo valid points found to export in layer '{layer}' (Errors: {error_count})")
+                no_msg = f"[WARNING] Layer '{layer}' (POINT): No valid points to export (Errors: {error_count})"
+                print(f"\t\t{no_msg}")
+                self.export_logs.append(no_msg)
         
         print(green('\tExported points completed'))
 
@@ -161,7 +175,7 @@ class DXFtoSHP:
         return vertices
 
     def _export_lines(self):
-        """Query and export LINE, LWPOLYLINE, POLYLINE, and ARC entities grouped by layer with element-level error handling."""
+        """Query and export LINE, LWPOLYLINE, POLYLINE, and ARC entities grouped by layer with element-level error handling and logging."""
         print('Exporting lines')
 
         # Lines, polylines, arcs
@@ -214,7 +228,14 @@ class DXFtoSHP:
                         count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process LINE in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"start({line.dxf.start.x}, {line.dxf.start.y})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (LINE) near {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             for lwpline in lwpolylines:
                 if lwpline.dxf.layer == layer:
@@ -230,7 +251,9 @@ class DXFtoSHP:
                             count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process LWPOLYLINE in layer '{layer}': {e}"))
+                        err_msg = f"[ERROR] Layer '{layer}' (LWPOLYLINE): {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             for pline in polylines:
                 if pline.dxf.layer == layer:
@@ -247,7 +270,9 @@ class DXFtoSHP:
                             count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process POLYLINE in layer '{layer}': {e}"))
+                        err_msg = f"[ERROR] Layer '{layer}' (POLYLINE): {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             for arc in arcs:
                 if arc.dxf.layer == layer:
@@ -259,21 +284,34 @@ class DXFtoSHP:
                             count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process ARC in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"center({arc.dxf.center.x}, {arc.dxf.center.y})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (ARC) near {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             if count > 0:
                 try:
                     self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(lines_folder, f"{layer}.shp"))
-                    print(green(f"\t\tSuccessfully exported {count} lines/curves in layer '{layer}' (Errors: {error_count})"))
+                    success_msg = f"[SUCCESS] Layer '{layer}' (LINE/CURVE): Exported {count} items (Errors: {error_count})"
+                    print(green(f"\t\t{success_msg}"))
+                    self.export_logs.append(success_msg)
                 except Exception as e:
-                    print(red(f"\t\t[Error] Failed to save shapefile for lines in layer '{layer}': {e}"))
+                    fail_msg = f"[ERROR] Layer '{layer}' (LINE/CURVE): Failed to save shapefile: {e}"
+                    print(red(f"\t\t{fail_msg}"))
+                    self.export_logs.append(fail_msg)
             else:
-                print(f"\t\tNo valid lines found to export in layer '{layer}' (Errors: {error_count})")
+                no_msg = f"[WARNING] Layer '{layer}' (LINE/CURVE): No valid lines found (Errors: {error_count})"
+                print(f"\t\t{no_msg}")
+                self.export_logs.append(no_msg)
 
         print(green('\tExported lines completed'))
 
     def _export_texts(self):
-        """Query and export TEXT and MTEXT entities grouped by layer with element-level error handling."""
+        """Query and export TEXT and MTEXT entities grouped by layer with element-level error handling and logging."""
         print('Exporting texts')
         texts_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'texts')
         os.mkdir(texts_folder)
@@ -316,7 +354,14 @@ class DXFtoSHP:
                         count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process TEXT in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"({text.dxf.insert.x}, {text.dxf.insert.y})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (TEXT) at {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             for mtext in mtexts:
                 if mtext.dxf.layer == layer:
@@ -329,16 +374,29 @@ class DXFtoSHP:
                         count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process MTEXT in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"({mtext.dxf.insert.x}, {mtext.dxf.insert.y})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (MTEXT) at {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             if count > 0:
                 try:
                     self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(texts_folder, f"{layer}.shp"))
-                    print(green(f"\t\tSuccessfully exported {count} texts in layer '{layer}' (Errors: {error_count})"))
+                    success_msg = f"[SUCCESS] Layer '{layer}' (TEXT): Exported {count} texts (Errors: {error_count})"
+                    print(green(f"\t\t{success_msg}"))
+                    self.export_logs.append(success_msg)
                 except Exception as e:
-                    print(red(f"\t\t[Error] Failed to save shapefile for texts in layer '{layer}': {e}"))
+                    fail_msg = f"[ERROR] Layer '{layer}' (TEXT): Failed to save shapefile: {e}"
+                    print(red(f"\t\t{fail_msg}"))
+                    self.export_logs.append(fail_msg)
             else:
-                print(f"\t\tNo valid texts found to export in layer '{layer}' (Errors: {error_count})")
+                no_msg = f"[WARNING] Layer '{layer}' (TEXT): No valid texts found (Errors: {error_count})"
+                print(f"\t\t{no_msg}")
+                self.export_logs.append(no_msg)
 
         print(green('\tExported texts completed'))
 
@@ -361,7 +419,7 @@ class DXFtoSHP:
         return vertices
 
     def _export_circles(self):
-        """Query and export CIRCLE entities as polygon shapefiles grouped by layer with element-level error handling."""
+        """Query and export CIRCLE entities as polygon shapefiles grouped by layer with element-level error handling and logging."""
         print('Exporting circles')
         circles_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'circles')
         os.mkdir(circles_folder)
@@ -395,16 +453,29 @@ class DXFtoSHP:
                         count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process CIRCLE in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"center({circle.dxf.center.x}, {circle.dxf.center.y})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (CIRCLE) near {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             if count > 0:
                 try:
                     self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(circles_folder, f"{layer}.shp"))
-                    print(green(f"\t\tSuccessfully exported {count} circles in layer '{layer}' (Errors: {error_count})"))
+                    success_msg = f"[SUCCESS] Layer '{layer}' (CIRCLE): Exported {count} circles (Errors: {error_count})"
+                    print(green(f"\t\t{success_msg}"))
+                    self.export_logs.append(success_msg)
                 except Exception as e:
-                    print(red(f"\t\t[Error] Failed to save shapefile for circles in layer '{layer}': {e}"))
+                    fail_msg = f"[ERROR] Layer '{layer}' (CIRCLE): Failed to save shapefile: {e}"
+                    print(red(f"\t\t{fail_msg}"))
+                    self.export_logs.append(fail_msg)
             else:
-                print(f"\t\tNo valid circles found to export in layer '{layer}' (Errors: {error_count})")
+                no_msg = f"[WARNING] Layer '{layer}' (CIRCLE): No valid circles found (Errors: {error_count})"
+                print(f"\t\t{no_msg}")
+                self.export_logs.append(no_msg)
 
         print(green('\tExported circles completed'))
 
@@ -434,7 +505,7 @@ class DXFtoSHP:
         return block_attr
 
     def _export_blocks(self):
-        """Query and export INSERT (block reference) entities with attributes grouped by layer with element-level error handling."""
+        """Query and export INSERT (block reference) entities with attributes grouped by layer with element-level error handling and logging."""
         print('Exporting blocks')
         blocks_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'blocks')
         os.mkdir(blocks_folder)
@@ -469,7 +540,9 @@ class DXFtoSHP:
                                 if valid_column not in list(layer_dict.keys()):
                                     layer_dict[valid_column] = []
                     except Exception as e:
-                        print(red(f"\t\t[Warning] Failed to inspect attributes for block in layer '{layer}': {e}"))
+                        warn_msg = f"[WARNING] Layer '{layer}' (BLOCK): Failed to inspect attributes: {e}"
+                        print(red(f"\t\t{warn_msg}"))
+                        self.export_logs.append(warn_msg)
 
             count = 0
             error_count = 0
@@ -501,22 +574,55 @@ class DXFtoSHP:
                         count += 1
                     except Exception as e:
                         error_count += 1
-                        print(red(f"\t\t[Error] Failed to process block instance in layer '{layer}': {e}"))
+                        coord_str = "unknown"
+                        try:
+                            coord_str = f"({block.dxf.insert.x}, {block.dxf.insert.y})"
+                        except Exception:
+                            pass
+                        err_msg = f"[ERROR] Layer '{layer}' (BLOCK) at {coord_str}: {e}"
+                        print(red(f"\t\t{err_msg}"))
+                        self.export_logs.append(err_msg)
 
             if count > 0:
                 try:
                     self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(blocks_folder, f"{layer}.shp"))
-                    print(green(f"\t\tSuccessfully exported {count} blocks in layer '{layer}' (Errors: {error_count})"))
+                    success_msg = f"[SUCCESS] Layer '{layer}' (BLOCK): Exported {count} blocks (Errors: {error_count})"
+                    print(green(f"\t\t{success_msg}"))
+                    self.export_logs.append(success_msg)
                 except Exception as e:
-                    print(red(f"\t\t[Error] Failed to save shapefile for blocks in layer '{layer}': {e}"))
+                    fail_msg = f"[ERROR] Layer '{layer}' (BLOCK): Failed to save shapefile: {e}"
+                    print(red(f"\t\t{fail_msg}"))
+                    self.export_logs.append(fail_msg)
             else:
-                print(f"\t\tNo valid blocks found to export in layer '{layer}' (Errors: {error_count})")
+                no_msg = f"[WARNING] Layer '{layer}' (BLOCK): No valid blocks found (Errors: {error_count})"
+                print(f"\t\t{no_msg}")
+                self.export_logs.append(no_msg)
 
         print(green('\tExported blocks completed'))
 
     def _export_report(self):
-        """Placeholder method for exporting conversion execution reports."""
-        pass
+        """Generate a summary report text file (report.txt) detailing export results, success counts, and error coordinates."""
+        print('Exporting report')
+        report_path = os.path.join(self.output_folder_path, self.out_folder_name, 'report.txt')
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write("=" * 70 + "\n")
+            f.write(f" DXF to Shapefile Export Report\n")
+            f.write(f" Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f" DXF File: {self.dxf_file_name}\n")
+            f.write("=" * 70 + "\n\n")
+            
+            if self.export_logs:
+                for log in self.export_logs:
+                    f.write(log + "\n")
+            else:
+                f.write("No export events or errors recorded.\n")
+            
+            f.write("\n" + "=" * 70 + "\n")
+            f.write(" End of Report\n")
+            f.write("=" * 70 + "\n")
+            
+        print(green(f"\tReport generated at {report_path}"))
 
     def run(self):
         """Execute the complete DXF to Shapefile conversion workflow step by step with error protection."""
@@ -530,7 +636,7 @@ class DXFtoSHP:
             self._export_circles,
             # self._export_mleaders,
             self._export_blocks,
-            # self._export_report,
+            self._export_report,
         ]
 
         for f in functions:
