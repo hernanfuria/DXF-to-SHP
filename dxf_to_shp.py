@@ -14,7 +14,7 @@ from clic import red, green
 
 
 class DXFtoSHP:
-    """"""
+    """Class to convert AutoCAD DXF drawing entities into geospatial Shapefiles (.shp)."""
 
     def __init__(
             self,
@@ -22,6 +22,7 @@ class DXFtoSHP:
             output_folder_path: str,
             dxf_file_name: str
     ):
+        """Initialize DXFtoSHP converter with input/output directory paths and DXF filename."""
         self.input_folder_path = input_folder_path
         self.output_folder_path = output_folder_path
         self.dxf_file_name = dxf_file_name
@@ -31,12 +32,14 @@ class DXFtoSHP:
         self.output_crs = 0
 
     def _read_dxf(self):
+        """Read the DXF file using ezdxf and load modelspace entities."""
         print(f"Reading {os.path.join(self.input_folder_path, self.dxf_file_name)}")
         self.dxf = ezdxf.readfile(os.path.join(self.input_folder_path, self.dxf_file_name))
         self.msp = self.dxf.modelspace()
         print(green('\tDrawing read'))
 
     def __double_digit_number(self, number) -> str:
+        """Format a number into a double-digit string with a leading zero if necessary."""
         num_str = str(number)
         if len(num_str) == 1:
             return '0' + num_str
@@ -44,6 +47,7 @@ class DXFtoSHP:
         return num_str
 
     def _create_out_folder(self):
+        """Create a timestamped output folder for storing exported shapefiles."""
         print('Creating output folder')
         now = datetime.now()
         year = self.__double_digit_number(now.year)
@@ -57,6 +61,7 @@ class DXFtoSHP:
         print(green(f"\t{os.path.join(self.output_folder_path, self.out_folder_name)} created"))
 
     def _get_reproject_info(self):
+        """Prompt the user for CRS input and output identifiers if spatial reprojection is desired."""
         self.reproject = False
         self.input_crs = 0
         self.output_crs = 0
@@ -70,6 +75,7 @@ class DXFtoSHP:
             self.output_crs = int(output_crs)
 
     def __create_and_export_shp(self, layer_dict: dict, output_path: str):
+        """Create a GeoDataFrame from layer data and export it to a Shapefile, applying CRS reprojection if configured."""
         if self.reproject:
             gdf = gpd.GeoDataFrame(layer_dict)
             gdf = gdf.set_crs(epsg=self.input_crs)
@@ -80,6 +86,7 @@ class DXFtoSHP:
             gdf.to_file(output_path)
 
     def _export_points(self):
+        """Query and export POINT entities from DXF modelspace grouped by layer with element-level error handling."""
         print('Exporting points')
         points_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'points')
         os.mkdir(points_folder)
@@ -127,6 +134,7 @@ class DXFtoSHP:
         print(green('\tExported points completed'))
 
     def __arc_to_linestring(self, arc):
+        """Convert an ARC entity into a list of vertex coordinates approximating the arc curve."""
         center = arc.dxf.center
         radius = arc.dxf.radius
         start_angle = arc.dxf.start_angle
@@ -153,6 +161,7 @@ class DXFtoSHP:
         return vertices
 
     def _export_lines(self):
+        """Query and export LINE, LWPOLYLINE, POLYLINE, and ARC entities grouped by layer with element-level error handling."""
         print('Exporting lines')
 
         # Lines, polylines, arcs
@@ -251,7 +260,7 @@ class DXFtoSHP:
                     except Exception as e:
                         error_count += 1
                         print(red(f"\t\t[Error] Failed to process ARC in layer '{layer}': {e}"))
-            
+
             if count > 0:
                 try:
                     self.__create_and_export_shp(layer_dict=layer_dict, output_path=os.path.join(lines_folder, f"{layer}.shp"))
@@ -264,6 +273,7 @@ class DXFtoSHP:
         print(green('\tExported lines completed'))
 
     def _export_texts(self):
+        """Query and export TEXT and MTEXT entities grouped by layer with element-level error handling."""
         print('Exporting texts')
         texts_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'texts')
         os.mkdir(texts_folder)
@@ -333,6 +343,7 @@ class DXFtoSHP:
         print(green('\tExported texts completed'))
 
     def __circle_to_polygon(self, circle, segments=360):
+        """Convert a CIRCLE entity into a list of vertex coordinates approximating a polygon."""
         center = circle.dxf.center
         radius = circle.dxf.radius
 
@@ -350,6 +361,7 @@ class DXFtoSHP:
         return vertices
 
     def _export_circles(self):
+        """Query and export CIRCLE entities as polygon shapefiles grouped by layer with element-level error handling."""
         print('Exporting circles')
         circles_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'circles')
         os.mkdir(circles_folder)
@@ -397,9 +409,11 @@ class DXFtoSHP:
         print(green('\tExported circles completed'))
 
     def _export_mleaders(self):
+        """Placeholder method for exporting MLEADER entities."""
         pass
 
     def __get_valid_shp_column_name(self, block_attr: str) -> str:
+        """Sanitize and validate shapefile attribute column names to comply with GIS field naming standards."""
         # Allowed Characters: Must only contain alphanumeric characters (a-z, A-Z, 0-9) and the underscore (_)
         allowed_characters = list(string.ascii_letters + string.digits + '_')
         to_replace = []
@@ -420,6 +434,7 @@ class DXFtoSHP:
         return block_attr
 
     def _export_blocks(self):
+        """Query and export INSERT (block reference) entities with attributes grouped by layer with element-level error handling."""
         print('Exporting blocks')
         blocks_folder = os.path.join(self.output_folder_path, self.out_folder_name, 'blocks')
         os.mkdir(blocks_folder)
@@ -500,9 +515,11 @@ class DXFtoSHP:
         print(green('\tExported blocks completed'))
 
     def _export_report(self):
+        """Placeholder method for exporting conversion execution reports."""
         pass
 
     def run(self):
+        """Execute the complete DXF to Shapefile conversion workflow step by step with error protection."""
         functions = [
             self._read_dxf,
             self._create_out_folder,
