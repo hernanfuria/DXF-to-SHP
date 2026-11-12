@@ -1,4 +1,4 @@
 @echo off
-call .\venv\Scripts\activate
+REM call .\venv\Scripts\activate
 py .\main.py
 pause
