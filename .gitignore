@@ -1,4 +1,5 @@
 venv/
+.venv/
 IN/
 OUT/
 __pycache__/

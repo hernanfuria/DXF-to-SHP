@@ -1,2 +1,2 @@
-py -m venv .\venv
+py -m venv .\.venv
 pause
