@@ -58,7 +58,7 @@ run.bat
 Alternatively, activate the virtual environment manually and run `main.py`:
 
 ```cmd
-call venv\Scripts\activate
+call .venv\Scripts\activate
 python main.py
 ```
 
